@@ -127,6 +127,36 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
         }
     }
 
+    //== Validate polygon and twin lists
+    /*
+    auto heEndpoints = [&](size_t iF, size_t iS) -> std::pair<size_t, size_t> {
+        const std::vector<size_t>& poly = polygons[iF];
+        size_t degree                   = poly.size();
+
+        size_t indTail = poly[iS];
+        size_t indTip  = poly[(iS + 1) % degree];
+
+        return std::make_pair(indTail, indTip);
+    };
+    for (size_t iF = 0; iF < twins.size(); iF++) {
+        for (size_t iS = 0; iS < twins[iF].size(); iS++) {
+            size_t jF = std::get<0>(twins[iF][iS]);
+            size_t jS = std::get<1>(twins[iF][iS]);
+
+            std::pair<size_t, size_t> iEndpoints = heEndpoints(iF, iS);
+            std::pair<size_t, size_t> jEndpoints = heEndpoints(jF, jS);
+
+            if (iEndpoints.first != jEndpoints.second ||
+                iEndpoints.second != jEndpoints.first) {
+                WATCH2(iEndpoints, jEndpoints);
+                WATCH(polygons[iF]);
+                WATCH(polygons[jF]);
+                throw_verbose_runtime_error("incompatible twin map");
+            }
+        }
+    }
+    */
+
     std::unique_ptr<ManifoldSurfaceMesh> coverMesh;
     coverMesh.reset(new ManifoldSurfaceMesh(polygons, twins));
 
@@ -167,7 +197,8 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
     if (true) {
         WATCH(coverMesh->nBoundaryLoops());
 
-        HalfedgeData<int> heVertexData(*coverMesh), heFaceData(*coverMesh);
+        HalfedgeData<int> heVertexData(*coverMesh), heFaceData(*coverMesh),
+            heTwin(*coverMesh);
 
         for (Halfedge he : mesh.interiorHalfedges()) {
             size_t posId     = hIdx[he];
@@ -179,6 +210,8 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
             heVertexData[negLift] = heVertexMap[negId];
             heFaceData[posLift]   = heFaceMap[posId];
             heFaceData[negLift]   = heFaceMap[negId];
+            heTwin[posLift] = meshHalfedges[coverTwinMap[posId]].getIndex();
+            heTwin[negLift] = meshHalfedges[coverTwinMap[negId]].getIndex();
         }
 
         VertexData<Vector3> positions(*coverMesh);
@@ -221,6 +254,7 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
             "normal", orientationCoverGeom->vertexNormals);
         psOffsetMesh->addHalfedgeScalarQuantity("v", heVertexData);
         psOffsetMesh->addHalfedgeScalarQuantity("f", heFaceData);
+        psOffsetMesh->addHalfedgeScalarQuantity("twin", heTwin);
         orientationCoverGeom->unrequireVertexNormals();
 
         polyscope::show();
