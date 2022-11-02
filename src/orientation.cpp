@@ -35,6 +35,8 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
         iH++;
     }
 
+    WATCH(nH);
+
     size_t nCoverH = 2 * nH;
 
     std::vector<size_t> coverNextMap =
@@ -198,7 +200,7 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
         WATCH(coverMesh->nBoundaryLoops());
 
         HalfedgeData<int> heVertexData(*coverMesh), heFaceData(*coverMesh),
-            heTwin(*coverMesh);
+            heTwin(*coverMesh), heNext(*coverMesh);
 
         for (Halfedge he : mesh.interiorHalfedges()) {
             size_t posId     = hIdx[he];
@@ -212,6 +214,8 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
             heFaceData[negLift]   = heFaceMap[negId];
             heTwin[posLift] = meshHalfedges[coverTwinMap[posId]].getIndex();
             heTwin[negLift] = meshHalfedges[coverTwinMap[negId]].getIndex();
+            heNext[posLift] = meshHalfedges[coverNextMap[posId]].getIndex();
+            heNext[negLift] = meshHalfedges[coverNextMap[negId]].getIndex();
         }
 
         VertexData<Vector3> positions(*coverMesh);
@@ -255,6 +259,7 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
         psOffsetMesh->addHalfedgeScalarQuantity("v", heVertexData);
         psOffsetMesh->addHalfedgeScalarQuantity("f", heFaceData);
         psOffsetMesh->addHalfedgeScalarQuantity("twin", heTwin);
+        psOffsetMesh->addHalfedgeScalarQuantity("next", heNext);
         orientationCoverGeom->unrequireVertexNormals();
 
         polyscope::show();
