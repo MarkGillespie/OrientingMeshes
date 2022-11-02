@@ -1,6 +1,6 @@
-#include "geometrycentral/surface/manifold_surface_mesh.h"
 #include "geometrycentral/surface/meshio.h"
 #include "geometrycentral/surface/simple_idt.h"
+#include "geometrycentral/surface/surface_mesh.h"
 #include "geometrycentral/surface/vertex_position_geometry.h"
 
 #include "polyscope/polyscope.h"
@@ -9,22 +9,64 @@
 #include "args/args.hxx"
 #include "imgui.h"
 
+#include "orientation.h"
 #include "utils.h"
 
 using namespace geometrycentral;
 using namespace geometrycentral::surface;
 
 // == Geometry-central data
-std::unique_ptr<ManifoldSurfaceMesh> mesh;
-std::unique_ptr<VertexPositionGeometry> geometry;
+std::unique_ptr<SurfaceMesh> mesh;
+std::unique_ptr<VertexPositionGeometry> geom;
+
+std::unique_ptr<ManifoldSurfaceMesh> orientationCoverMesh;
+std::unique_ptr<VertexPositionGeometry> orientationCoverGeom;
+OrientationCoverMapping mapping;
 
 // Polyscope visualization handle, to quickly add data to the surface
-polyscope::SurfaceMesh* psMesh;
+polyscope::SurfaceMesh *psMesh, *psCoverMesh;
 
 // A user-defined callback, for creating control panels (etc)
 // Use ImGUI commands to build whatever you want here, see
 // https://github.com/ocornut/imgui/blob/master/imgui.h
-void myCallback() {}
+void myCallback() {
+    if (ImGui::Button("Orient")) {
+        std::tie(orientationCoverMesh, mapping) =
+            constructOrientationCover(*mesh);
+
+        VertexData<Vector3> positions(*orientationCoverMesh);
+        for (Vertex v : orientationCoverMesh->vertices()) {
+            Halfedge he        = v.halfedge();
+            Halfedge heBase    = mapping.coverHalfedgeToBase[he].first;
+            bool heOrientation = mapping.coverHalfedgeToBase[he].second;
+
+            Vertex vBase =
+                heOrientation ? heBase.tailVertex() : heBase.tipVertex();
+            positions[v] = geom->vertexPositions[vBase];
+        }
+
+        orientationCoverGeom.reset(
+            new VertexPositionGeometry(*orientationCoverMesh, positions));
+
+        psCoverMesh = polyscope::registerSurfaceMesh(
+            "orientation cover", orientationCoverGeom->vertexPositions,
+            orientationCoverMesh->getFaceVertexList(),
+            polyscopePermutations(*orientationCoverMesh));
+
+        orientationCoverGeom->requireVertexNormals();
+        psCoverMesh->addVertexVectorQuantity(
+            "normal", orientationCoverGeom->vertexNormals);
+
+        // VertexData<Vector3> displacedPositions =
+        //     positions + 0.1 * orientationCoverGeom->vertexNormals;
+
+        // polyscope::registerSurfaceMesh(
+        //     "displaced orientation cover", displacedPositions,
+        //     orientationCoverMesh->getFaceVertexList(),
+        //     polyscopePermutations(*orientationCoverMesh));
+        orientationCoverGeom->unrequireVertexNormals();
+    }
+}
 
 int main(int argc, char** argv) {
 
@@ -32,6 +74,8 @@ int main(int argc, char** argv) {
     args::ArgumentParser parser("Geometry program");
     args::Positional<std::string> inputFilename(parser, "mesh",
                                                 "Mesh to be processed.");
+
+    std::cout << std::boolalpha;
 
     // Parse args
     try {
@@ -58,22 +102,16 @@ int main(int argc, char** argv) {
     polyscope::state::userCallback = myCallback;
 
     // Load mesh
-    std::tie(mesh, geometry) = readManifoldSurfaceMesh(filename);
-    std::cout << "Genus: " << mesh->genus() << std::endl;
+    std::tie(mesh, geom) = readSurfaceMesh(filename);
 
     // Register the mesh with polyscope
     psMesh = polyscope::registerSurfaceMesh(
-        polyscope::guessNiceNameFromPath(filename), geometry->vertexPositions,
+        polyscope::guessNiceNameFromPath(filename), geom->vertexPositions,
         mesh->getFaceVertexList(), polyscopePermutations(*mesh));
 
-    std::vector<double> vData;
-    vData.reserve(mesh->nVertices());
-    for (size_t iV = 0; iV < mesh->nVertices(); ++iV) {
-        vData.push_back(randomReal(0, 1));
-    }
-
-    auto q = psMesh->addVertexScalarQuantity("data", vData);
-    q->setEnabled(true);
+    geom->requireVertexNormals();
+    psMesh->addVertexVectorQuantity("normal", geom->vertexNormals);
+    geom->unrequireVertexNormals();
 
     // Give control to the polyscope gui
     polyscope::show();

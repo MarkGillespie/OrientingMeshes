@@ -9,6 +9,7 @@ add_executable(
   run
   main.cpp
   utils.cpp
+  orientation.cpp
 )
 target_include_directories(run PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../include")
 # borrow args.hxx directly from polyscope
