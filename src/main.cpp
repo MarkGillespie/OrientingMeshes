@@ -32,7 +32,8 @@ polyscope::SurfaceMesh *psMesh, *psCoverMesh;
 void myCallback() {
     if (ImGui::Button("Orient")) {
         std::tie(orientationCoverMesh, mapping) =
-            constructOrientationCover(*mesh);
+            constructOrientationCover(*mesh, geom->vertexPositions);
+        WATCH(orientationCoverMesh->nBoundaryLoops());
 
         VertexData<Vector3> positions(*orientationCoverMesh);
         for (Vertex v : orientationCoverMesh->vertices()) {
@@ -57,13 +58,22 @@ void myCallback() {
         psCoverMesh->addVertexVectorQuantity(
             "normal", orientationCoverGeom->vertexNormals);
 
-        // VertexData<Vector3> displacedPositions =
-        //     positions + 0.1 * orientationCoverGeom->vertexNormals;
+        VertexData<bool> isBoundary(*orientationCoverMesh);
+        for (Vertex v : orientationCoverMesh->vertices()) {
+            isBoundary[v] = v.isBoundary();
+        }
 
-        // polyscope::registerSurfaceMesh(
-        //     "displaced orientation cover", displacedPositions,
-        //     orientationCoverMesh->getFaceVertexList(),
-        //     polyscopePermutations(*orientationCoverMesh));
+        psCoverMesh->addVertexScalarQuantity("isBoundary", isBoundary);
+
+        VertexData<Vector3> displacedPositions =
+            positions + 0.1 * orientationCoverGeom->vertexNormals;
+
+        polyscope::registerSurfaceMesh(
+            "displaced orientation cover", displacedPositions,
+            orientationCoverMesh->getFaceVertexList(),
+            polyscopePermutations(*orientationCoverMesh))
+            ->addVertexVectorQuantity("normal",
+                                      orientationCoverGeom->vertexNormals);
         orientationCoverGeom->unrequireVertexNormals();
     }
 }

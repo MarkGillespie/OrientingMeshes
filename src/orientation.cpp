@@ -1,7 +1,12 @@
 #include "orientation.h"
 
+#include "geometrycentral/surface/meshio.h"
+#include "geometrycentral/surface/vertex_position_geometry.h"
+#include "polyscope/polyscope.h"
+#include "polyscope/surface_mesh.h"
+
 std::pair<std::unique_ptr<ManifoldSurfaceMesh>, OrientationCoverMapping>
-constructOrientationCover(SurfaceMesh& mesh) {
+constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
 
     // clang-format off
     /*
@@ -43,7 +48,7 @@ constructOrientationCover(SurfaceMesh& mesh) {
         coverNextMap[hIdxOpp[he.next()]] = hIdxOpp[he];
 
         // Handle boundary halfedges
-        if (he.sibling() == Halfedge() || !he.sibling().isInterior()) continue;
+        if (he.sibling() == he || !he.sibling().isInterior()) continue;
 
         if (he.orientation() != he.sibling().orientation()) {
             // neighboring face orientation agrees
@@ -89,6 +94,13 @@ constructOrientationCover(SurfaceMesh& mesh) {
         size_t currHe = iH;
         size_t iSide  = 0;
         do {
+            size_t iV = heVertexMap[currHe];
+            if (std::find(polygons[iF].begin(), polygons[iF].end(), iV) !=
+                polygons[iF].end()) {
+                std::cout << "Vertex " << iV
+                          << " appears multiple times in polygon " << iF << ": "
+                          << polygons[iF] << vendl;
+            }
             polygons[iF].push_back(heVertexMap[currHe]);
             halfedgeIndexInFace[currHe] = iSide;
             currHe                      = coverNextMap[currHe];
@@ -105,7 +117,6 @@ constructOrientationCover(SurfaceMesh& mesh) {
     for (size_t iH = 0; iH < nCoverH; iH++) {
         size_t iF    = heFaceMap[iH];
         size_t iSide = halfedgeIndexInFace[iH];
-
 
         if (coverTwinMap[iH] == INVALID_IND) {
             twins[iF][iSide] = std::make_tuple(INVALID_IND, INVALID_IND);
@@ -153,6 +164,67 @@ constructOrientationCover(SurfaceMesh& mesh) {
             std::make_pair(positiveLift, negativeLift);
     }
 
+    if (true) {
+        WATCH(coverMesh->nBoundaryLoops());
+
+        HalfedgeData<int> heVertexData(*coverMesh), heFaceData(*coverMesh);
+
+        for (Halfedge he : mesh.interiorHalfedges()) {
+            size_t posId     = hIdx[he];
+            size_t negId     = hIdxOpp[he];
+            Halfedge posLift = meshHalfedges[hIdx[he]];
+            Halfedge negLift = meshHalfedges[hIdxOpp[he]];
+
+            heVertexData[posLift] = heVertexMap[posId];
+            heVertexData[negLift] = heVertexMap[negId];
+            heFaceData[posLift]   = heFaceMap[posId];
+            heFaceData[negLift]   = heFaceMap[negId];
+        }
+
+        VertexData<Vector3> positions(*coverMesh);
+        for (Vertex v : coverMesh->vertices()) {
+            Halfedge he        = v.halfedge();
+            Halfedge heBase    = mapping.coverHalfedgeToBase[he].first;
+            bool heOrientation = mapping.coverHalfedgeToBase[he].second;
+
+            Vertex vBase =
+                heOrientation ? heBase.tailVertex() : heBase.tipVertex();
+            positions[v] = pos[vBase];
+        }
+
+        std::unique_ptr<VertexPositionGeometry> orientationCoverGeom;
+        orientationCoverGeom.reset(
+            new VertexPositionGeometry(*coverMesh, positions));
+
+        auto psCoverMesh = polyscope::registerSurfaceMesh(
+            "orientation cover", orientationCoverGeom->vertexPositions,
+            coverMesh->getFaceVertexList(), polyscopePermutations(*coverMesh));
+
+        orientationCoverGeom->requireVertexNormals();
+        psCoverMesh->addVertexVectorQuantity(
+            "normal", orientationCoverGeom->vertexNormals);
+
+        VertexData<bool> isBoundary(*coverMesh);
+        for (Vertex v : coverMesh->vertices()) {
+            isBoundary[v] = v.isBoundary();
+        }
+
+        psCoverMesh->addVertexScalarQuantity("isBoundary", isBoundary);
+
+        VertexData<Vector3> displacedPositions =
+            positions + 0.1 * orientationCoverGeom->vertexNormals;
+
+        auto psOffsetMesh = polyscope::registerSurfaceMesh(
+            "displaced orientation cover", displacedPositions,
+            coverMesh->getFaceVertexList(), polyscopePermutations(*coverMesh));
+        psOffsetMesh->addVertexVectorQuantity(
+            "normal", orientationCoverGeom->vertexNormals);
+        psOffsetMesh->addHalfedgeScalarQuantity("v", heVertexData);
+        psOffsetMesh->addHalfedgeScalarQuantity("f", heFaceData);
+        orientationCoverGeom->unrequireVertexNormals();
+
+        polyscope::show();
+    }
     return std::make_pair(std::move(coverMesh), mapping);
 }
 
@@ -205,7 +277,8 @@ std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
             if (heVertex[currHe] == INVALID_IND) {
                 visitedHalfedges.push_back(currHe);
                 heVertex[currHe] = iV;
-                currHe           = next[twin[currHe]];
+                currHe = twin[currHe] != INVALID_IND ? next[twin[currHe]]
+                                                     : INVALID_IND;
             } else {
                 size_t olderIndex = heVertex[currHe];
                 for (size_t jHe : visitedHalfedges) {
@@ -233,7 +306,7 @@ std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
             labelHeFace(iHe, iF);
             iF++;
         }
-        verbose_assert(heFace[iHe] != INVALID_IND, "???");
+
         if (heVertex[iHe] == INVALID_IND) {
             bool usedNewVertexIndex = labelHeVertex(iHe, iV);
             if (usedNewVertexIndex) iV++;

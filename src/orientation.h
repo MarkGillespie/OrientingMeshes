@@ -16,7 +16,7 @@ struct OrientationCoverMapping {
 };
 
 std::pair<std::unique_ptr<ManifoldSurfaceMesh>, OrientationCoverMapping>
-constructOrientationCover(SurfaceMesh& mesh);
+constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos);
 
 
 // Assumes next, twin describe the halfedges of a manifold, oriented surface
