@@ -63,11 +63,34 @@ constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos) {
         }
     }
 
+    //== Validate twin map
+    for (size_t iH = 0; iH < nCoverH; iH++) {
+        verbose_assert(coverTwinMap[iH] != iH, "twin has fixed point?");
+        if (coverTwinMap[iH] != INVALID_IND) {
+            verbose_assert(coverTwinMap[coverTwinMap[iH]] == iH,
+                           "twin not involution?");
+        }
+    }
+
     std::vector<size_t> heVertexMap, heFaceMap;
 
     size_t nCoverV, nCoverF;
     std::tie(nCoverV, nCoverF) =
         indexMeshElements(coverNextMap, coverTwinMap, heVertexMap, heFaceMap);
+
+    //== Validate vertex and face indices
+    for (size_t iH = 0; iH < nCoverH; iH++) {
+
+        verbose_assert(heFaceMap[iH] != INVALID_IND, "face map err");
+        verbose_assert(heFaceMap[iH] == heFaceMap[coverNextMap[iH]],
+                       "face map err");
+
+        if (coverTwinMap[iH] == INVALID_IND) continue;
+
+        verbose_assert(heVertexMap[iH] ==
+                           heVertexMap[coverNextMap[coverTwinMap[iH]]],
+                       "vertex map err");
+    }
 
     std::vector<std::vector<size_t>> polygons(nCoverF, std::vector<size_t>{});
     std::vector<size_t> faceDegrees(nCoverF);
@@ -278,6 +301,11 @@ std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
                        " elements, but twin array has " +
                        std::to_string(twin.size()) + " elements");
 
+    std::vector<size_t> prev(nH);
+    for (size_t iH = 0; iH < nH; iH++) {
+        prev[next[iH]] = iH;
+    }
+
     heVertex = std::vector<size_t>(nH, INVALID_IND);
     heFace   = std::vector<size_t>(nH, INVALID_IND);
 
@@ -302,28 +330,20 @@ std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
                        "obtained invalid halfedge while iterating over face?");
     };
 
-    // Loop over halfedges reachable by applying next(twin(*)) to iHe. If all of
-    // them have heVertex INVALID_IND, then set the vertex index to iV and
-    // return true. If any have already been assigned a vertex index, then apply
-    // that vertex index to all halfedges found and return false
-    // This is kind of a convoluted operation because applying next(twin(*))
-    // repeatedly to iHe may not reach all halfedges emanating from this vertex
-    // if this vertex is on the boundary
-    auto labelHeVertex = [&](size_t iHe, size_t iV) -> bool {
+    auto labelHeVertex = [&](size_t iHe, size_t iV) {
+        // std::cout << "Starting from halfedge " << iHe << vendl;
         size_t currHe = iHe;
-        std::vector<size_t> visitedHalfedges;
         do {
-            if (heVertex[currHe] == INVALID_IND) {
-                visitedHalfedges.push_back(currHe);
-                heVertex[currHe] = iV;
-                currHe = twin[currHe] != INVALID_IND ? next[twin[currHe]]
-                                                     : INVALID_IND;
+            // std::cout << "\tprocessing halfedge " << currHe << vendl;
+            verbose_assert(heVertex[currHe] == INVALID_IND,
+                           "halfedge '" + std::to_string(currHe) +
+                               "' already had a vertex index?");
+
+            heVertex[currHe] = iV;
+            if (twin[currHe] == INVALID_IND) {
+                currHe = INVALID_IND;
             } else {
-                size_t olderIndex = heVertex[currHe];
-                for (size_t jHe : visitedHalfedges) {
-                    heVertex[jHe] = olderIndex;
-                    return false;
-                }
+                currHe = next[twin[currHe]];
             }
         } while (currHe != iHe && isValid(currHe));
 
@@ -335,7 +355,29 @@ std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
                                std::to_string(INVALID_IND) + ")?");
         }
 
-        return true;
+        // If we hit a boundary, loop back the other way as well
+        if (currHe == INVALID_IND) {
+            currHe = twin[prev[iHe]];
+            while (currHe != iHe && isValid(currHe)) {
+                // std::cout << "\tprocessing halfedge " << currHe << "
+                // (reversed)"
+                //           << vendl;
+                verbose_assert(heVertex[currHe] == INVALID_IND,
+                               "halfedge '" + std::to_string(currHe) +
+                                   "' already had a vertex index?");
+
+                heVertex[currHe] = iV;
+                currHe           = twin[prev[currHe]];
+            }
+
+            if (!isValid(currHe)) {
+                verbose_assert(currHe == INVALID_IND,
+                               "obtained out-of-range halfedge " +
+                                   std::to_string(currHe) +
+                                   " which is not equal to INVALID_IND (" +
+                                   std::to_string(INVALID_IND) + ")?");
+            }
+        }
     };
 
     size_t iV = 0;
@@ -347,8 +389,12 @@ std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
         }
 
         if (heVertex[iHe] == INVALID_IND) {
-            bool usedNewVertexIndex = labelHeVertex(iHe, iV);
-            if (usedNewVertexIndex) iV++;
+            labelHeVertex(iHe, iV);
+            iV++;
+        }
+        if (heVertex[iHe] == INVALID_IND) {
+            WATCH(twin[iHe]);
+            verbose_assert(heVertex[iHe] != INVALID_IND, "???");
         }
     }
 
