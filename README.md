@@ -1,7 +1,13 @@
-# GeometryTemplate
-A template project to get started with geometry-central and Polyscope. Copied from Nick's template [here](https://github.com/nmwsharp/gc-polyscope-project-template), but with code for googletest added in.
+# Computing Orientable Double Covers
 
-This repo is set up as a template, but it seems the submodules don't get copied to the new project. Run `setup.sh` to set up the required submodules and to run cmake. Setup also sets up cmake to export compile commands for `clang-format`. To build the code, you can run
+Any surface---whether orientable or not---has an [orientable double cover](https://en.wikipedia.org/wiki/Orientability#Orientable_double_cover).
+
+![Nonorientable mobius strip](images/nonorientable.png)
+![Orientable double cover](images/double_cover.png)
+
+On triangle meshes, this double cover has a simple construction. You take each triangle in the input mesh and make two copies, assigning the two copies opposite orientations. Then you glue together the copies of adjacent triangles whose orientations agree.
+
+To build the code, you can run
 ```
 cd build
 make -j7
@@ -10,9 +16,4 @@ make -j7
 Then run the code with
 ```
 bin/run /path/to/a/mesh
-```
-
-Run the tests with
-```
-bin/test
 ```
