@@ -2,6 +2,7 @@
 
 #include "geometrycentral/surface/manifold_surface_mesh.h"
 #include "geometrycentral/surface/surface_mesh.h"
+#include "geometrycentral/surface/surface_mesh_factories.h"
 
 #include "utils.h"
 
@@ -17,12 +18,3 @@ struct OrientationCoverMapping {
 
 std::pair<std::unique_ptr<ManifoldSurfaceMesh>, OrientationCoverMapping>
 constructOrientationCover(SurfaceMesh& mesh, const VertexData<Vector3>& pos);
-
-
-// Assumes next, twin describe the halfedges of a manifold, oriented surface
-// mesh
-// returns #vertices, #faces
-std::pair<size_t, size_t> indexMeshElements(const std::vector<size_t>& next,
-                                            const std::vector<size_t>& twin,
-                                            std::vector<size_t>& heVertex,
-                                            std::vector<size_t>& heFace);
